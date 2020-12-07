@@ -1,0 +1,39 @@
+div#tree {
+    text-align: center;
+}
+
+div#tree div {
+    height: 50px;
+}
+
+div#tree > div > div {
+    width: 50px;
+    display: inline-block;
+}
+
+div#tree > div.leaves > div {
+    background-color: green;
+    text-align: center;
+}
+
+/* Ornament */
+div#tree > div.leaves > div > div {
+    display: inline-block;
+    background-color: red;
+    width: 30px;
+    height: 25px;
+    margin-top: 10px;
+    border-radius: 50%;
+    cursor: pointer;
+    overflow: hidden;
+    padding-top: 5px;
+    color: white;
+}
+
+div#tree > div.star > div {
+    background-color: yellow;
+}
+
+div#tree > div.trunk > div {
+    background-color: brown;
+}
