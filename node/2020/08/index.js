@@ -107,6 +107,9 @@ const part2 = (original) => {
         if (result.term) {
             return result.acc;
         }
+        if (line.cmd == 'jmp') {
+            i += line.val - 1;
+        }
     }
     console.error("The program never terminated...");
 };
