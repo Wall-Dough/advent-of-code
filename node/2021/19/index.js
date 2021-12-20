@@ -12,6 +12,24 @@ const format = (text) => {
     });
 };
 
+const format_dict = (scanner) => {
+    var scanner_dict = {};
+    for (var j = 0; j < scanner.length; j++) {
+        var beacon = scanner[j];
+        var x = beacon[0];
+        var y = beacon[1];
+        var z = beacon[2];
+        if (!scanner_dict[x]) {
+            scanner_dict[x] = {};
+        }
+        if (!scanner_dict[x][y]) {
+            scanner_dict[x][y] = {};
+        }
+        scanner_dict[x][y][z] = true;
+    }
+    return scanner_dict;
+}
+
 const rotate_beacon = (beacon, rotation) => {
     var new_beacon = beacon.slice();
     var x_rotation = rotation[0];
@@ -56,49 +74,60 @@ const transform_scanner = (scanner, transformation) => {
     return scanner;
 };
 
-const match_beacons = (s1_beacons, s2_beacons) => {
-    var num_matches = 0;
-    var transformations = [];
+const match_rotation = (s1_beacon, s2_beacons, s1_dict, rotation) => {
+    var rotated_first = rotate_beacon(s2_beacons[0], rotation);
+    var position = [0, 0, 0];
+    for (var i = 0; i < 3; i++) {
+        position[i] = rotated_first[i] - s1_beacon[i];
+    }
+    var transformation = {};
+    transformation["rotation"] = rotation;
+    transformation["position"] = position;
+    for (var b = 1; b < s2_beacons.length; b++) {
+        var transformed = transform_beacon(s2_beacons[b], transformation);
+        var x = transformed[0];
+        var y = transformed[1];
+        var z = transformed[2];
+        if (!s1_dict[x]) {
+            return null;
+        }
+        if (!s1_dict[x][y]) {
+            return null;
+        }
+        if (!s1_dict[x][y][z]) {
+            return null;
+        }
+    }
+    return transformation;
+};
+
+const match_beacons = (s1_beacon, s2_beacons, s1_dict, transformation = null) => {
+    if (transformation) {
+        var new_transformation = match_rotation(s1_beacon, s2_beacons, s1_dict, transformation["rotation"]);
+        if (!new_transformation) {
+            return null;
+        }
+        var position = transformation["position"];
+        var new_position = new_transformation["position"];
+        for (var i = 0; i < 3; i++) {
+            if (position[i] != new_position[i]) {
+                return null;
+            }
+        }
+        return transformation;
+    }
     for (var i = 0; i < 2; i++) {
         for (var j = 0; j < 4; j++) {
             if (i == 1 && j == 1) {
                 continue;
             }
             for (var k = 0; k < 4; k++) {
-                var transformation = {};
-                transformation["rotation"] = [0, 0, 0];
-                transformation["position"] = [0, 0, 0];
-                var rotation = [i, j, k];
-                var rotated_first = rotate_beacon(s2_beacons[0], rotation);
-                var num_matches = 0;
-                var position = [0, 0, 0];
-                var valid = true;
-                for (var b = 1; b < s2_beacons.length; b++) {
-                    var num_matches = 0;
-                    for (var a = 0; a < 3; a++) {
-                        var first_position = rotated_first[a] - s1_beacons[0][a];
-                        var rotated = rotate_beacon(s2_beacons[b], rotation);
-                        var rotated_position = rotated[a] - s1_beacons[b][a];
-                        if (rotated_position == first_position) {
-                            position[a] = first_position;
-                            num_matches++;
-                        }
-                    }
-                    if (num_matches != 3) {
-                        valid = false;
-                        break;
-                    }
-                }
-                if (valid) {
-                    transformation["position"] = position;
-                    transformation["rotation"] = rotation;
+                var transformation = match_rotation(s1_beacon, s2_beacons, s1_dict, [i, j, k]);
+                if (transformation != null) {
                     return transformation;
                 }
             }
         }
-    }
-    if (transformations.length > 0) {
-        return transformations;
     }
     return null;
 };
@@ -115,23 +144,23 @@ const compare_transformations = (transformation1, transformation2) => {
     return true;
 };
 
-const match_scanners = (scanner1, scanner2) => {
+const match_scanners = (scanner1, scanner2, s1_dict) => {
     var matches = [];
-    for (var i = 0; i < scanner1.length; i++) {
-        for (var j = i + 1; j < scanner1.length; j++) {
-            for (var k = 0; k < scanner2.length; k++) {
-                for (var l = k + 1; l < scanner2.length; l++) {
-                    var transformation = match_beacons([scanner1[i], scanner1[j]], [scanner2[k], scanner2[l]]);
-                    if (transformation != null) {
-                        if (matches.indexOf(i) < 0) {
-                            matches.push(i);
-                        }
-                        if (matches.indexOf(j) < 0) {
-                            matches.push(j);
-                        }
-                        if (matches.length == 12) {
-                            return transformation;
-                        }
+    var transformation = null;
+    for (var k = 0; k < scanner2.length; k++) {
+        for (var l = k + 1; l < scanner2.length; l++) {
+            for (var i = 0; i < scanner1.length; i++) {
+                var new_transformation = match_beacons(scanner1[i], [scanner2[k], scanner2[l]], s1_dict, transformation);
+                if (new_transformation) {
+                    transformation = new_transformation;
+                    if (matches.indexOf(k) < 0) {
+                        matches.push(k);
+                    }
+                    if (matches.indexOf(l) < 0) {
+                        matches.push(l);
+                    }
+                    if (matches.length == 12) {
+                        return transformation;
                     }
                 }
             }
@@ -140,9 +169,9 @@ const match_scanners = (scanner1, scanner2) => {
     return null;
 };
 
-const count_beacons = (scanners) => {
+const get_unique_beacons = (scanners) => {
     var beacons = {};
-    var num_beacons = 0;
+    var unique_beacons = [];
     for (var scanner of scanners) {
         for (var beacon of scanner) {
             var x = beacon[0];
@@ -156,14 +185,18 @@ const count_beacons = (scanners) => {
             }
             if (!beacons[x][y][z]) {
                 beacons[x][y][z] = true;
-                num_beacons++;
+                unique_beacons.push(beacon);
             }
         }
     }
-    return num_beacons;
+    return unique_beacons;
 };
 
-const part1 = (scanners) => {
+const get_all_beacons = (scanners) => {
+    var scanner_dicts = [];
+    for (var i = 0; i < scanners.length; i++) {
+        scanner_dicts.push(format_dict(scanners[i]));
+    }
     var transformed = [0];
     while (transformed.length < scanners.length) {
         for (var i = 0; i < scanners.length; i++) {
@@ -174,20 +207,69 @@ const part1 = (scanners) => {
                 if (transformed.indexOf(j) > -1) {
                     continue;
                 }
-                var transformation = match_scanners(scanners[i], scanners[j]);
+                var transformation = match_scanners(scanners[i], scanners[j], scanner_dicts[i]);
                 if (transformation != null) {
-                    console.log(transformation);
                     transform_scanner(scanners[j], transformation);
+                    scanner_dicts[j] = format_dict(scanners[j]);
                     transformed.push(j);
+                    console.log("%d, %d", i, j);
+                    console.log("%d/%d", transformed.length, scanners.length);
                 }
             }
         }
     }
-    return count_beacons(scanners);
+    return get_unique_beacons(scanners);
 };
 
-const part2 = (input) => {
+const get_all_positions = (scanners) => {
+    var positions = [[0, 0, 0]];
+    var scanner_dicts = [];
+    for (var i = 0; i < scanners.length; i++) {
+        scanner_dicts.push(format_dict(scanners[i]));
+    }
+    var transformed = [0];
+    while (transformed.length < scanners.length) {
+        for (var i = 0; i < scanners.length; i++) {
+            if (transformed.indexOf(i) < 0) {
+                continue;
+            }
+            for (var j = 1; j < scanners.length; j++) {
+                if (transformed.indexOf(j) > -1) {
+                    continue;
+                }
+                var transformation = match_scanners(scanners[i], scanners[j], scanner_dicts[i]);
+                if (transformation != null) {
+                    transform_scanner(scanners[j], transformation);
+                    positions.push(transformation["position"]);
+                    scanner_dicts[j] = format_dict(scanners[j]);
+                    transformed.push(j);
+                    console.log("%d, %d", i, j);
+                    console.log("%d/%d", transformed.length, scanners.length);
+                }
+            }
+        }
+    }
+    return positions;
+};
 
+const part1 = (scanners) => {
+    var beacons = get_all_beacons(scanners);
+    return beacons.length;
+};
+
+const part2 = (scanners) => {
+    var positions = get_all_positions(scanners);
+    var max_manhattan_distance = 0;
+    for (var i = 0; i < positions.length; i++) {
+        for (var j = i + 1; j < positions.length; j++) {
+            var manhattan_distance = 0;
+            for (var k = 0; k < 3; k++) {
+                manhattan_distance += Math.abs(positions[i][k] - positions[j][k]);
+            }
+            max_manhattan_distance = Math.max(max_manhattan_distance, manhattan_distance);
+        }
+    };
+    return max_manhattan_distance;
 };
 
 const exampleText = `--- scanner 0 ---
